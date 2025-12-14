@@ -1,0 +1,53 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Participant {
+  id                    String   @id @default(cuid())
+  marca_temporal        String   @db.VarChar(255)
+  correo                String   @db.VarChar(255)
+  nombres_apellidos     String   @db.VarChar(255)
+  documento_identidad   String   @db.VarChar(50)
+  genero                String   @db.VarChar(20)
+  numero_celular        String   @db.VarChar(20)
+  regimen_laboral       String   @db.VarChar(100)
+  organo_unidad         String   @db.VarChar(255)
+  cargo                 String   @db.VarChar(255)
+  encuesta_satisfaccion String   @db.Text
+  qr_code               String?  @db.VarChar(500)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  eventId               String
+  emailSent             Boolean   @default(false)
+  emailSentAt           DateTime?
+  emailError            String?
+  event                 Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+  @@index([correo])
+  @@index([documento_identidad])
+}
+
+model Event {
+  id           String        @id @default(cuid())
+  title        String        @db.VarChar(255)
+  eventDate    String        @db.VarChar(100)
+  issueDate    String        @db.VarChar(100)
+  location     String        @db.VarChar(100)
+  duration     String        @db.VarChar(100)
+  footerText   String        @db.Text
+  logoLeft     String?       @db.Text
+  logoRight    String?       @db.Text
+  signatures   Json
+  participants Participant[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([title])
+  @@index([createdAt])
+}
