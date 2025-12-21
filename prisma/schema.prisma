@@ -8,26 +8,30 @@ datasource db {
 }
 
 model Participant {
-  id                    String   @id @default(cuid())
-  marca_temporal        String   @db.VarChar(255)
-  correo                String   @db.VarChar(255)
-  nombres_apellidos     String   @db.VarChar(255)
-  documento_identidad   String   @db.VarChar(50)
-  genero                String   @db.VarChar(20)
-  numero_celular        String   @db.VarChar(20)
-  regimen_laboral       String   @db.VarChar(100)
-  organo_unidad         String   @db.VarChar(255)
-  cargo                 String   @db.VarChar(255)
-  encuesta_satisfaccion String   @db.Text
-  qr_code               String?  @db.VarChar(500)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id                    String    @id @default(cuid())
+  marca_temporal        String    @db.VarChar(255)
+  correo                String    @db.VarChar(255)
+  nombres_apellidos     String    @db.VarChar(255)
+  documento_identidad   String    @db.VarChar(50)
+  genero                String    @db.VarChar(20)
+  numero_celular        String    @db.VarChar(20)
+  regimen_laboral       String    @db.VarChar(100)
+  organo_unidad         String    @db.VarChar(255)
+  cargo                 String    @db.VarChar(255)
+  encuesta_satisfaccion String    @db.Text
+  qr_code               String?   @db.VarChar(500)
+  
+  // NUEVO: Guardar el certificado generado como base64
+  certificateImage      String?   @db.LongText
+  
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
   eventId               String
   emailSent             Boolean   @default(false)
   emailSentAt           DateTime?
   emailError            String?
-  event                 Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
-
+  event                 Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  
   @@index([eventId])
   @@index([correo])
   @@index([documento_identidad])
@@ -43,11 +47,15 @@ model Event {
   footerText   String        @db.Text
   logoLeft     String?       @db.Text
   logoRight    String?       @db.Text
+  
+  // NUEVO: Guardar la plantilla usada
+  templateImage String?      @db.LongText
+  
   signatures   Json
   participants Participant[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
-
+  
   @@index([title])
   @@index([createdAt])
 }

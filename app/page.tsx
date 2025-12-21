@@ -15,8 +15,6 @@ import {
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { ParticipantTable } from '@/components/ParticipantTable';
-import { ConfigPanel } from '@/components/ConfigPanel';
-import { SignatureManager } from '@/components/SignatureManager';
 import { CertificateGenerator } from '@/lib/certificateGenerator';
 import type { Participant, Signature, Config, Logos } from '@/types/certificate';
 
@@ -173,9 +171,10 @@ export default function CertificadosPage() {
                         'ocupacion'
                     ])
                 );
+                const tempId = `temp-${Date.now()}-${index}`;
 
                 return {
-                    id: `temp-${Date.now()}-${index}`,
+                    id: tempId,
                     marca_temporal: toString(findColumn(row, ['marca temporal', 'timestamp', 'fecha'])),
                     correo: correo,
                     nombres_apellidos: nombres,
@@ -192,7 +191,7 @@ export default function CertificadosPage() {
                     ])),
                     cargo: cargo,
                     encuesta_satisfaccion: toString(findColumn(row, ['encuesta', 'satisfaccion'])),
-                    qr_code: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/certificate/temp-${Date.now()}-${index}`,
+                    qr_code: `${process.env.NEXT_PUBLIC_APP_URL || window.location.origin}/certificate/${tempId}`,
                     emailSent: false,
                     emailSentAt: null,
                     savedToDB: false
@@ -371,15 +370,15 @@ export default function CertificadosPage() {
             formData.append('email', participant.correo);
             formData.append('name', participant.nombres_apellidos);
             formData.append('eventTitle', config.eventTitle);
+            formData.append('certificateBase64', imgData); // NUEVO: Enviar base64 completo
             formData.append('participantData', JSON.stringify({
                 ...participant,
                 eventId: eventId,
                 eventConfig: config,
                 logos: logos,
-                signatures: signatures
+                signatures: signatures,
+                templateImage: certificateTemplate // NUEVO: Enviar plantilla
             }));
-
-            console.log('Enviando a:', participant.correo);
 
             const response = await fetch('/api/send-certificate', {
                 method: 'POST',
@@ -463,7 +462,6 @@ export default function CertificadosPage() {
 
     return (
         <>
-            {/* Loader Global */}
             {isLoading && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[100]">
                     <div className="bg-white rounded-lg p-8 flex flex-col items-center gap-4 shadow-2xl">
@@ -505,7 +503,6 @@ export default function CertificadosPage() {
                         </div>
                     )}
 
-                    {/*<ConfigPanel config={config} setConfig={setConfig} />*/}
                     <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
                         <h2 className="text-2xl font-semibold text-black mb-4">Plantilla de Certificado</h2>
                         <div className="space-y-4">
@@ -560,9 +557,7 @@ export default function CertificadosPage() {
                             )}
                         </div>
                     </div>
-                    {/*
-                    <SignatureManager signatures={signatures} setSignatures={setSignatures} />
-                    */}
+
                     <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
                         <h2 className="text-2xl font-semibold text-black mb-4">Cargar Participantes</h2>
                         <div className="flex items-center justify-center w-full">
@@ -636,7 +631,6 @@ export default function CertificadosPage() {
                 </div>
             </div>
 
-            {/* Dialog de Confirmación */}
             {confirmDialog && (
                 <AlertDialog open={confirmDialog.open} onOpenChange={(open) => !open && setConfirmDialog(null)}>
                     <AlertDialogContent>

@@ -3,7 +3,6 @@ import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 import { prisma } from '@/lib/prisma';
 
-// Configurar transportador SMTP
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || 'smtp.gmail.com',
   port: parseInt(process.env.SMTP_PORT || '587'),
@@ -14,7 +13,6 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-// SOLO MÉTODO POST
 export async function POST(request: Request) {
   try {
     console.log('📧 Iniciando envío de certificado...');
@@ -25,20 +23,19 @@ export async function POST(request: Request) {
     const name = formData.get('name') as string;
     const eventTitle = formData.get('eventTitle') as string;
     const participantDataStr = formData.get('participantData') as string;
+    const certificateBase64 = formData.get('certificateBase64') as string; // NUEVO
 
     console.log('📝 Datos recibidos:', { email, name, eventTitle });
 
-    if (!certificate || !email || !name || !participantDataStr) {
+    if (!certificate || !email || !name || !participantDataStr || !certificateBase64) {
       return NextResponse.json(
         { error: 'Faltan datos requeridos' },
         { status: 400 }
       );
     }
 
-    // Parsear datos del participante
     const participantData = JSON.parse(participantDataStr);
 
-    // Validar email
     if (!email.includes('@')) {
       return NextResponse.json(
         { error: 'Correo electrónico inválido' },
@@ -46,7 +43,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // 1. Guardar/Actualizar evento en BD
+    // 1. Guardar/Actualizar evento en BD (incluyendo plantilla)
     console.log('💾 Guardando evento en BD...');
     let event = await prisma.event.findUnique({
       where: { id: participantData.eventId }
@@ -64,49 +61,73 @@ export async function POST(request: Request) {
           footerText: participantData.eventConfig.footerText,
           logoLeft: participantData.logos.left,
           logoRight: participantData.logos.right,
-          signatures: participantData.signatures
+          signatures: participantData.signatures,
+          templateImage: participantData.templateImage || null // Guardar plantilla
         }
       });
       console.log('✅ Evento creado:', event.id);
-    } else {
-      console.log('✅ Evento ya existe:', event.id);
     }
 
-    // 2. Guardar participante en BD
-    console.log('💾 Guardando participante en BD...');
-    const participant = await prisma.participant.create({
-      data: {
-        eventId: participantData.eventId,
-        marca_temporal: participantData.marca_temporal || '',
+    // 2. Verificar si el participante ya existe (por correo y eventId)
+    let participant = await prisma.participant.findFirst({
+      where: {
         correo: participantData.correo,
-        nombres_apellidos: participantData.nombres_apellidos,
-        documento_identidad: participantData.documento_identidad || '',
-        genero: participantData.genero || '',
-        numero_celular: participantData.numero_celular || '',
-        regimen_laboral: participantData.regimen_laboral || '',
-        organo_unidad: participantData.organo_unidad || '',
-        cargo: participantData.cargo || '',
-        encuesta_satisfaccion: participantData.encuesta_satisfaccion || '',
-        qr_code: 'temp', // Lo actualizaremos después
-        emailSent: false,
-        emailSentAt: null
+        eventId: participantData.eventId
       }
     });
 
-    console.log('✅ Participante guardado:', participant.id);
+    if (participant) {
+      // Actualizar participante existente con el nuevo certificado
+      console.log('🔄 Actualizando participante existente:', participant.id);
+      participant = await prisma.participant.update({
+        where: { id: participant.id },
+        data: {
+          certificateImage: certificateBase64, // Guardar imagen del certificado
+          qr_code: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/certificate/${participant.id}`,
+          emailSent: false, // Se actualizará después del envío
+          emailSentAt: null
+        }
+      });
+    } else {
+      // Crear nuevo participante
+      console.log('💾 Creando nuevo participante...');
+      participant = await prisma.participant.create({
+        data: {
+          eventId: participantData.eventId,
+          marca_temporal: participantData.marca_temporal || '',
+          correo: participantData.correo,
+          nombres_apellidos: participantData.nombres_apellidos,
+          documento_identidad: participantData.documento_identidad || '',
+          genero: participantData.genero || '',
+          numero_celular: participantData.numero_celular || '',
+          regimen_laboral: participantData.regimen_laboral || '',
+          organo_unidad: participantData.organo_unidad || '',
+          cargo: participantData.cargo || '',
+          encuesta_satisfaccion: participantData.encuesta_satisfaccion || '',
+          qr_code: 'temp', // Se actualizará inmediatamente
+          certificateImage: certificateBase64, // Guardar imagen del certificado
+          emailSent: false,
+          emailSentAt: null
+        }
+      });
 
-    // Actualizar QR code con el ID real
-    const qrCode = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/certificate/${participant.id}`;
-    await prisma.participant.update({
-      where: { id: participant.id },
-      data: { qr_code: qrCode }
-    });
+      // Actualizar QR con ID real
+      const qrCode = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/certificate/${participant.id}`;
+      participant = await prisma.participant.update({
+        where: { id: participant.id },
+        data: { qr_code: qrCode }
+      });
+    }
 
-    // 3. Enviar email
-    console.log('📧 Preparando email...');
+    console.log('✅ Participante guardado con ID:', participant.id);
+    const qrCode = participant.qr_code!;
+    console.log('🔗 URL del certificado:', qrCode);
+
+    // 3. Convertir certificado a buffer para email
     const arrayBuffer = await certificate.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
+    // 4. Preparar email
     const html = `
       <!DOCTYPE html>
       <html lang="es">
@@ -150,6 +171,16 @@ export async function POST(request: Request) {
             padding: 15px;
             margin: 20px 0;
           }
+          .qr-link {
+            display: inline-block;
+            background: #8B4513;
+            color: white;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 20px 0;
+            font-weight: bold;
+          }
           .footer {
             background: #f5f5f5;
             padding: 20px;
@@ -161,6 +192,13 @@ export async function POST(request: Request) {
           .icon {
             font-size: 48px;
             margin-bottom: 15px;
+          }
+          .note {
+            background: #fff9e6;
+            border-left: 4px solid #ffcc00;
+            padding: 15px;
+            margin: 20px 0;
+            font-size: 14px;
           }
         </style>
       </head>
@@ -186,13 +224,23 @@ export async function POST(request: Request) {
               month: 'long',
               year: 'numeric'
             })}</p>
-            <p><strong>🔗 Verificar online:</strong> <a href="${qrCode}">${qrCode}</a></p>
           </div>
           
           <p>
             Adjunto a este correo encontrará su certificado en formato PNG de alta calidad.
-            Este documento tiene validez oficial y puede ser verificado mediante el código QR incluido.
           </p>
+
+          <center>
+            <a href="${qrCode}" class="qr-link">
+              🔍 Verificar Certificado Online
+            </a>
+          </center>
+
+          <div class="note">
+            <strong>📱 Verificación del certificado:</strong><br>
+            Puede verificar la autenticidad de este certificado ingresando al siguiente enlace:<br><br>
+            <a href="${qrCode}" style="color: #8B4513; word-break: break-all;">${qrCode}</a>
+          </div>
           
           <p>
             <strong>Recomendaciones:</strong>
@@ -200,7 +248,7 @@ export async function POST(request: Request) {
           <ul>
             <li>Guarde este certificado en un lugar seguro</li>
             <li>Puede imprimirlo para uso físico</li>
-            <li>El código QR permite verificar su autenticidad</li>
+            <li>Use el enlace de arriba para verificar su autenticidad en línea</li>
           </ul>
           
           <p style="margin-top: 30px;">
@@ -243,7 +291,7 @@ export async function POST(request: Request) {
 
     console.log('✅ Email enviado exitosamente');
 
-    // 4. Actualizar estado de email enviado
+    // 5. Actualizar estado de email enviado
     await prisma.participant.update({
       where: { id: participant.id },
       data: {
