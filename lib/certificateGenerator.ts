@@ -64,8 +64,8 @@ export class CertificateGenerator {
     const dateX = (this.canvas.width * vc.dateX) / 100;
 
     const qrSize = 120;
-    const qrX = 80;
-    const qrY = this.canvas.height - qrSize - 50;
+    const qrX = 10;
+    const qrY = this.canvas.height - qrSize - 10;
 
     this.ctx.fillStyle = '#000000';
     this.ctx.font = `bold ${vc.nameFontSize}px Arial`;
@@ -95,7 +95,6 @@ export class CertificateGenerator {
         this.ctx.fillStyle = '#FFFFFF';
         this.ctx.fillRect(qrX - 5, qrY - 5, qrSize + 10, qrSize + 10);
 
-        // Dibujar QR
         this.ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
 
         this.ctx.fillStyle = '#000000';

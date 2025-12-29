@@ -7,6 +7,21 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id                String    @id @default(cuid())
+  email             String    @unique @db.VarChar(255)
+  password          String    @db.VarChar(255)
+  name              String    @db.VarChar(255)
+  role              String    @default("admin") @db.VarChar(50)
+  resetToken        String?   @db.VarChar(255)
+  resetTokenExpiry  DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@index([email])
+  @@index([resetToken])
+}
+
 model Participant {
   id                    String    @id @default(cuid())
   marca_temporal        String    @db.VarChar(255)
@@ -20,10 +35,7 @@ model Participant {
   cargo                 String    @db.VarChar(255)
   encuesta_satisfaccion String    @db.Text
   qr_code               String?   @db.VarChar(500)
-  
-  // NUEVO: Guardar el certificado generado como base64
   certificateImage      String?   @db.LongText
-  
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
   eventId               String
@@ -38,23 +50,20 @@ model Participant {
 }
 
 model Event {
-  id           String        @id @default(cuid())
-  title        String        @db.VarChar(255)
-  eventDate    String        @db.VarChar(100)
-  issueDate    String        @db.VarChar(100)
-  location     String        @db.VarChar(100)
-  duration     String        @db.VarChar(100)
-  footerText   String        @db.Text
-  logoLeft     String?       @db.Text
-  logoRight    String?       @db.Text
-  
-  // NUEVO: Guardar la plantilla usada
-  templateImage String?      @db.LongText
-  
-  signatures   Json
-  participants Participant[]
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  id            String        @id @default(cuid())
+  title         String        @db.VarChar(255)
+  eventDate     String        @db.VarChar(100)
+  issueDate     String        @db.VarChar(100)
+  location      String        @db.VarChar(100)
+  duration      String        @db.VarChar(100)
+  footerText    String        @db.Text
+  logoLeft      String?       @db.Text
+  logoRight     String?       @db.Text
+  templateImage String?       @db.LongText
+  signatures    Json
+  participants  Participant[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
   
   @@index([title])
   @@index([createdAt])
