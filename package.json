@@ -7,9 +7,9 @@
   },
   "scripts": {
     "dev": "next dev",
+    "postinstall": "prisma generate",
     "build": "next build",
     "start": "next start",
-    "postinstall": "prisma generate",
     "lint": "eslint"
   },
   "dependencies": {
