@@ -3,6 +3,8 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
     const now = new Date();
@@ -56,8 +58,8 @@ export async function GET() {
       lastMonthEvents > 0
         ? (((thisMonthEvents - lastMonthEvents) / lastMonthEvents) * 100).toFixed(1)
         : thisMonthEvents > 0
-        ? '100'
-        : '0';
+          ? '100'
+          : '0';
 
     const lastMonthParticipants = await prisma.participant.count({
       where: {
@@ -79,12 +81,12 @@ export async function GET() {
     const participantsChange =
       lastMonthParticipants > 0
         ? (
-            ((thisMonthParticipants - lastMonthParticipants) / lastMonthParticipants) *
-            100
-          ).toFixed(1)
+          ((thisMonthParticipants - lastMonthParticipants) / lastMonthParticipants) *
+          100
+        ).toFixed(1)
         : thisMonthParticipants > 0
-        ? '100'
-        : '0';
+          ? '100'
+          : '0';
 
     const lastMonthCertificates = await prisma.participant.count({
       where: {
@@ -108,12 +110,12 @@ export async function GET() {
     const certificatesChange =
       lastMonthCertificates > 0
         ? (
-            ((thisMonthCertificates - lastMonthCertificates) / lastMonthCertificates) *
-            100
-          ).toFixed(1)
+          ((thisMonthCertificates - lastMonthCertificates) / lastMonthCertificates) *
+          100
+        ).toFixed(1)
         : thisMonthCertificates > 0
-        ? '100'
-        : '0';
+          ? '100'
+          : '0';
 
     const recentEvents = await prisma.event.findMany({
       take: 4,
@@ -186,13 +188,13 @@ export async function GET() {
     return NextResponse.json({
       stats: {
         totalEvents,
-        eventsChange: `${eventsChange >= 0 ? '+' : ''}${eventsChange}%`,
+        eventsChange: `${Number(eventsChange) >= 0 ? '+' : ''}${eventsChange}%`,
         totalParticipants,
-        participantsChange: `${participantsChange >= 0 ? '+' : ''}${participantsChange}%`,
+        participantsChange: `${Number(participantsChange) >= 0 ? '+' : ''}${participantsChange}%`,
         certificatesIssued,
-        certificatesChange: `${certificatesChange >= 0 ? '+' : ''}${certificatesChange}%`,
+        certificatesChange: `${Number(certificatesChange) >= 0 ? '+' : ''}${certificatesChange}%`,
         emailSendRate: `${emailSendRate}%`,
-        emailSendRateChange: '+0%', 
+        emailSendRateChange: '+0.0%',
       },
       recentEvents: recentEvents.map((event) => ({
         id: event.id,

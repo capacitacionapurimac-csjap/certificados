@@ -1,4 +1,5 @@
-import { Config, Participant, Logos, Signature } from '@/types/certificate';
+import { Config, Participant } from '@/types/certificate';
+import QRCode from 'qrcode';
 
 interface VisualConfig {
   nameY: number;
@@ -8,30 +9,41 @@ interface VisualConfig {
   dateX: number;
 }
 
-export class CertificateGenerator {
-  private canvas: HTMLCanvasElement;
-  private ctx: CanvasRenderingContext2D;
+type CanvasType = HTMLCanvasElement | any;
+type ImageType = HTMLImageElement | any;
+type ContextType = CanvasRenderingContext2D | any;
 
-  constructor(canvas: HTMLCanvasElement) {
+export class CertificateGenerator {
+  private canvas: CanvasType;
+  private ctx: ContextType;
+  private isNode: boolean;
+
+  constructor(canvas: CanvasType) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d')!;
+    this.isNode = typeof window === 'undefined';
   }
 
-  private loadImage(src: string): Promise<HTMLImageElement> {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = reject;
-      img.src = src;
-      img.crossOrigin = 'anonymous';
-    });
+  private async loadImage(src: string): Promise<ImageType> {
+    if (this.isNode) {
+      const { loadImage } = await import('canvas');
+      return loadImage(src);
+    } else {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = src;
+        img.crossOrigin = 'anonymous';
+      });
+    }
   }
 
   /**
    * Genera el certificado escribiendo sobre una plantilla existente
    * @param participant - Datos del participante
    * @param config - Configuración del evento
-   * @param templateSrc - URL de la imagen de la plantilla
+   * @param templateSrc - URL o base64 de la imagen de la plantilla
    * @param visualConfig - Configuración de posiciones y tamaños (opcional)
    */
   async generateFromTemplate(
@@ -52,8 +64,8 @@ export class CertificateGenerator {
 
     const templateImg = await this.loadImage(templateSrc);
 
-    this.canvas.width = templateImg.width;
-    this.canvas.height = templateImg.height;
+    this.canvas.width = templateImg.width || 1920;
+    this.canvas.height = templateImg.height || 1080;
 
     this.ctx.drawImage(templateImg, 0, 0);
 
@@ -81,7 +93,6 @@ export class CertificateGenerator {
 
     if (participant.qr_code) {
       try {
-        const QRCode = (await import('qrcode')).default;
         const qrDataUrl = await QRCode.toDataURL(participant.qr_code, {
           width: qrSize,
           margin: 1,
@@ -90,6 +101,7 @@ export class CertificateGenerator {
             light: '#FFFFFF'
           }
         });
+
         const qrImg = await this.loadImage(qrDataUrl);
 
         this.ctx.fillStyle = '#FFFFFF';
@@ -97,15 +109,15 @@ export class CertificateGenerator {
 
         this.ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
 
-        this.ctx.fillStyle = '#000000';
-        this.ctx.font = 'bold 12px Arial';
-        this.ctx.textAlign = 'center';;
-
       } catch (error) {
         console.error('Error generating QR:', error);
       }
     }
 
-    return this.canvas.toDataURL('image/png');
+    if (this.isNode) {
+      return this.canvas.toDataURL('image/png');
+    } else {
+      return this.canvas.toDataURL('image/png');
+    }
   }
 }

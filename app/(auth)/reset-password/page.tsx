@@ -1,10 +1,11 @@
 'use client'
 import { Eye, EyeClosed, Gavel } from 'lucide-react'
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 
-export default function ResetPassword() {
+// Componente que usa useSearchParams
+function ResetPasswordForm() {
     const [isOpen, setIsOpen] = useState(false)
     const [password, setPassword] = useState('')
     const [confirmPassword, setConfirmPassword] = useState('')
@@ -127,5 +128,36 @@ export default function ResetPassword() {
                 </div>
             </div>
         </div>
+    )
+}
+
+// Componente de loading
+function ResetPasswordLoading() {
+    return (
+        <div className=''>
+            <div className='bg-primary h-1/2 absolute top-0 left-0 w-full rounded-b-[50px]'></div>
+            <div className='relative z-10 w-full h-screen flex justify-center items-center'>
+                <div className='bg-white rounded-2xl shadow-2xl shadow-black min-w-lg p-12'>
+                    <div className='flex flex-col items-center gap-y-4'>
+                        <div className='w-14 h-14 flex justify-center items-center bg-gray-300 rounded-full animate-pulse text-secondary'>
+                            <Gavel size={30} />
+                        </div>
+                        <div className='text-center'>
+                            <div className='h-6 w-48 bg-gray-200 rounded animate-pulse mb-2'></div>
+                            <div className='h-4 w-32 bg-gray-200 rounded animate-pulse mx-auto'></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    )
+}
+
+// Componente principal con Suspense
+export default function ResetPassword() {
+    return (
+        <Suspense fallback={<ResetPasswordLoading />}>
+            <ResetPasswordForm />
+        </Suspense>
     )
 }

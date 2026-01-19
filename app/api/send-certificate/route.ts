@@ -13,21 +13,21 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: Request) {
   try {
     console.log('📧 Iniciando envío de certificado...');
 
     const formData = await request.formData();
-    const certificate = formData.get('certificate') as Blob;
     const email = formData.get('email') as string;
     const name = formData.get('name') as string;
     const eventTitle = formData.get('eventTitle') as string;
     const participantDataStr = formData.get('participantData') as string;
-    const certificateBase64 = formData.get('certificateBase64') as string; // NUEVO
 
     console.log('📝 Datos recibidos:', { email, name, eventTitle });
 
-    if (!certificate || !email || !name || !participantDataStr || !certificateBase64) {
+    if (!email || !name || !participantDataStr) {
       return NextResponse.json(
         { error: 'Faltan datos requeridos' },
         { status: 400 }
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // 1. Guardar/Actualizar evento en BD (incluyendo plantilla)
+    // 1. Guardar/Actualizar evento en BD
     console.log('💾 Guardando evento en BD...');
     let event = await prisma.event.findUnique({
       where: { id: participantData.eventId }
@@ -62,7 +62,7 @@ export async function POST(request: Request) {
           logoLeft: participantData.logos.left,
           logoRight: participantData.logos.right,
           signatures: participantData.signatures,
-          templateImage: participantData.templateImage || null // Guardar plantilla
+          templateImage: participantData.templateImage || null
         }
       });
       console.log('✅ Evento creado:', event.id);
@@ -77,19 +77,9 @@ export async function POST(request: Request) {
     });
 
     if (participant) {
-      // Actualizar participante existente con el nuevo certificado
-      console.log('🔄 Actualizando participante existente:', participant.id);
-      participant = await prisma.participant.update({
-        where: { id: participant.id },
-        data: {
-          certificateImage: certificateBase64, // Guardar imagen del certificado
-          qr_code: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/certificate/${participant.id}`,
-          emailSent: false, // Se actualizará después del envío
-          emailSentAt: null
-        }
-      });
+      console.log('🔄 Participante ya existe con ID:', participant.id);
     } else {
-      // Crear nuevo participante
+      // Crear nuevo participante SIN certificado aún
       console.log('💾 Creando nuevo participante...');
       participant = await prisma.participant.create({
         data: {
@@ -104,30 +94,79 @@ export async function POST(request: Request) {
           organo_unidad: participantData.organo_unidad || '',
           cargo: participantData.cargo || '',
           encuesta_satisfaccion: participantData.encuesta_satisfaccion || '',
-          qr_code: 'temp', // Se actualizará inmediatamente
-          certificateImage: certificateBase64, // Guardar imagen del certificado
+          qr_code: 'temp', // Temporal
+          certificateImage: null, // Se generará después
           emailSent: false,
           emailSentAt: null
         }
       });
-
-      // Actualizar QR con ID real
-      const qrCode = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/certificate/${participant.id}`;
-      participant = await prisma.participant.update({
-        where: { id: participant.id },
-        data: { qr_code: qrCode }
-      });
+      console.log('✅ Participante creado con ID:', participant.id);
     }
 
-    console.log('✅ Participante guardado con ID:', participant.id);
-    const qrCode = participant.qr_code!;
-    console.log('🔗 URL del certificado:', qrCode);
+    // 3. AHORA generar la URL del QR con el ID REAL
+    const qrCode = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/certificate/${participant.id}`;
+    console.log('🔗 URL del certificado (ID REAL):', qrCode);
 
-    // 3. Convertir certificado a buffer para email
-    const arrayBuffer = await certificate.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    // 4. Generar el certificado con el QR correcto
+    console.log('🎨 Generando certificado con QR real...');
+    const { CertificateGenerator } = await import('@/lib/certificateGenerator');
+    const { createCanvas } = await import('canvas');
+    const canvas = createCanvas(1920, 1080);
+    const generator = new CertificateGenerator(canvas);
+    
+    // Actualizar participantData con el QR real
+    const updatedParticipantData = {
+      ...participantData,
+      qr_code: qrCode
+    };
 
-    // 4. Preparar email
+    const certificateBase64 = await generator.generateFromTemplate(
+      updatedParticipantData,
+      participantData.eventConfig,
+      participantData.templateImage,
+      {
+        nameY: participantData.visualConfig?.nameY || 44,
+        nameFontSize: participantData.visualConfig?.nameFontSize || 48,
+        dateY: participantData.visualConfig?.dateY || 68,
+        dateFontSize: participantData.visualConfig?.dateFontSize || 18,
+        dateX: participantData.visualConfig?.dateX || 85
+      }
+    );
+
+    // 5. Actualizar participante con QR y certificado correctos
+    participant = await prisma.participant.update({
+      where: { id: participant.id },
+      data: { 
+        qr_code: qrCode,
+        certificateImage: certificateBase64
+      }
+    });
+    console.log('✅ Participante actualizado con QR y certificado reales');
+
+    // 6. Convertir certificado a PDF
+    console.log('📄 Generando PDF del certificado...');
+    const { PDFDocument } = await import('pdf-lib');
+    
+    const base64Data = certificateBase64.replace(/^data:image\/png;base64,/, '');
+    const imageBuffer = Buffer.from(base64Data, 'base64');
+    
+    const pdfDoc = await PDFDocument.create();
+    const pngImage = await pdfDoc.embedPng(imageBuffer);
+    
+    const page = pdfDoc.addPage([pngImage.width, pngImage.height]);
+    page.drawImage(pngImage, {
+      x: 0,
+      y: 0,
+      width: pngImage.width,
+      height: pngImage.height,
+    });
+    
+    const pdfBytes = await pdfDoc.save();
+    // Convertir Uint8Array a Buffer
+    const pdfBuffer = Buffer.from(pdfBytes);
+    console.log('✅ PDF generado correctamente');
+
+    // 7. Preparar y enviar email
     const html = `
       <!DOCTYPE html>
       <html lang="es">
@@ -227,7 +266,7 @@ export async function POST(request: Request) {
           </div>
           
           <p>
-            Adjunto a este correo encontrará su certificado en formato PNG de alta calidad.
+            Adjunto a este correo encontrará su certificado en formato PDF de alta calidad, listo para imprimir o compartir digitalmente.
           </p>
 
           <center>
@@ -282,16 +321,16 @@ export async function POST(request: Request) {
       html,
       attachments: [
         {
-          filename: `Certificado_${name.replace(/\s+/g, '_')}.png`,
-          content: buffer,
-          contentType: 'image/png',
+          filename: `Certificado_${name.replace(/\s+/g, '_')}.pdf`,
+          content: pdfBuffer,
+          contentType: 'application/pdf',
         },
       ],
     });
 
     console.log('✅ Email enviado exitosamente');
 
-    // 5. Actualizar estado de email enviado
+    // 8. Actualizar estado de email enviado
     await prisma.participant.update({
       where: { id: participant.id },
       data: {
@@ -310,13 +349,16 @@ export async function POST(request: Request) {
       qrCode
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('❌ Error completo:', error);
+    let message = "Error al enviar email"
+      if (error instanceof Error) {
+      message = error.message;
+    }
     return NextResponse.json(
       { 
         error: 'Error al enviar email', 
-        details: error.message,
-        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        details: message
       },
       { status: 500 }
     );

@@ -6,6 +6,8 @@ import { cookies } from 'next/headers';
 
 const prisma = new PrismaClient();
 
+export const dynamic = 'force-dynamic';
+
 async function getUserFromToken() {
   try {
     const cookieStore = await cookies();
