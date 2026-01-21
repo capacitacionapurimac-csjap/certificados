@@ -81,11 +81,11 @@ export default function ParticipantsPage() {
   });
 
   useEffect(() => {
-    fetchEvents();
+    //fetchEvents();
     fetchParticipants();
   }, [searchTerm, selectedEvent]);
 
-  const fetchEvents = async () => {
+  /*const fetchEvents = async () => {
     try {
       const response = await fetch('/api/events?limit=100');
       const data = await response.json();
@@ -93,7 +93,7 @@ export default function ParticipantsPage() {
     } catch (error) {
       console.error('Error fetching events:', error);
     }
-  };
+  };*/
 
   const fetchParticipants = async () => {
     try {
