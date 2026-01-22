@@ -13,6 +13,7 @@ type CanvasType = HTMLCanvasElement | any;
 type ImageType = HTMLImageElement | any;
 type ContextType = CanvasRenderingContext2D | any;
 
+
 export class CertificateGenerator {
   private canvas: CanvasType;
   private ctx: ContextType;
@@ -22,6 +23,14 @@ export class CertificateGenerator {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d')!;
     this.isNode = typeof window === 'undefined';
+  }
+
+  private async loadFont(name: string, url: string) {
+    if (this.isNode) return;
+
+    const font = new FontFace(name, `url(${url})`);
+    const loadedFont = await font.load();
+    document.fonts.add(loadedFont);
   }
 
   private async loadImage(src: string): Promise<ImageType> {
@@ -60,6 +69,12 @@ export class CertificateGenerator {
       dateX: 85
     };
 
+    if (!this.isNode) {
+      await this.loadFont("MontserratBold", "/static/Montserrat-Bold.ttf");
+      await this.loadFont("MontserratRegular", "/static/Montserrat-Regular.ttf");
+    }
+
+
     const vc = visualConfig || defaultConfig;
 
     const templateImg = await this.loadImage(templateSrc);
@@ -80,13 +95,13 @@ export class CertificateGenerator {
     const qrY = this.canvas.height - qrSize - 10;
 
     this.ctx.fillStyle = '#000000';
-    this.ctx.font = `bold ${vc.nameFontSize}px sans-serif`;
+    this.ctx.font = `bold ${vc.nameFontSize}px MontserratBold`;
     this.ctx.textAlign = 'center';
     this.ctx.fillText(participant.nombres_apellidos.toUpperCase(), centerX, nameY);
 
     if (config.issueLocation && config.issueDate) {
       this.ctx.textAlign = 'right';
-      this.ctx.font = `${vc.dateFontSize}px sans-serif`;
+      this.ctx.font = `${vc.dateFontSize}px MontserratRegular`;
       this.ctx.fillStyle = '#000000';
       this.ctx.fillText(`${config.issueLocation}, ${config.issueDate}`, dateX, dateY);
     }
