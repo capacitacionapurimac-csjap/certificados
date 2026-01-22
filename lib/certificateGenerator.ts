@@ -17,7 +17,8 @@ export class CertificateGenerator {
   private canvas: CanvasType;
   private ctx: ContextType;
   private isNode: boolean;
-  private fontsLoaded: boolean = false;
+  private static fontsLoaded: boolean = false;
+  private static fontsLoading: Promise<void> | null = null;
 
   constructor(canvas: CanvasType) {
     this.canvas = canvas;
@@ -25,31 +26,70 @@ export class CertificateGenerator {
     this.isNode = typeof window === 'undefined';
   }
 
-  private async loadFont(name: string, url: string): Promise<boolean> {
-    if (this.isNode) return true;
-
-    try {
-      // Verificar si la fuente ya está cargada
-      const fonts = Array.from(document.fonts);
-      if (fonts.some((f: any) => f.family === name)) {
-        console.log(`Font ${name} already loaded`);
-        return true;
-      }
-
-      console.log(`Loading font ${name} from ${url}`);
-      const font = new FontFace(name, `url(${url})`);
-      const loadedFont = await font.load();
-      document.fonts.add(loadedFont);
-      
-      // Esperar a que el documento reconozca la fuente
-      await document.fonts.ready;
-      
-      console.log(`Font ${name} loaded successfully`);
-      return true;
-    } catch (error) {
-      console.error(`Error loading font ${name} from ${url}:`, error);
-      return false;
+  /**
+   * Método estático para cargar fuentes UNA VEZ y reutilizar en toda la app
+   */
+  static async ensureFontsLoaded(): Promise<void> {
+    if (typeof window === 'undefined') return;
+    
+    // Si ya están cargadas, retornar inmediatamente
+    if (CertificateGenerator.fontsLoaded) {
+      console.log('✓ Fonts already loaded');
+      return;
     }
+
+    // Si están cargando, esperar a que terminen
+    if (CertificateGenerator.fontsLoading) {
+      console.log('⏳ Waiting for fonts to finish loading...');
+      return CertificateGenerator.fontsLoading;
+    }
+
+    // Iniciar carga
+    console.log('🔄 Starting font loading...');
+    CertificateGenerator.fontsLoading = (async () => {
+      try {
+        const fonts = [
+          { name: 'MontserratBold', url: '/fonts/Montserrat-Bold.ttf' },
+          { name: 'MontserratRegular', url: '/fonts/Montserrat-Regular.ttf' }
+        ];
+
+        const loadPromises = fonts.map(async ({ name, url }) => {
+          try {
+            // Verificar si ya existe
+            const existingFonts = Array.from(document.fonts);
+            if (existingFonts.some((f: any) => f.family === name)) {
+              console.log(`✓ ${name} already in document.fonts`);
+              return true;
+            }
+
+            console.log(`📥 Loading ${name} from ${url}`);
+            const fontFace = new FontFace(name, `url(${url})`);
+            const loaded = await fontFace.load();
+            document.fonts.add(loaded);
+            console.log(`✓ ${name} loaded successfully`);
+            return true;
+          } catch (error) {
+            console.error(`❌ Failed to load ${name}:`, error);
+            return false;
+          }
+        });
+
+        await Promise.all(loadPromises);
+        await document.fonts.ready;
+        
+        // Esperar un tick adicional para asegurar disponibilidad
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        CertificateGenerator.fontsLoaded = true;
+        console.log('✅ All fonts loaded and ready');
+      } catch (error) {
+        console.error('❌ Error in font loading process:', error);
+      } finally {
+        CertificateGenerator.fontsLoading = null;
+      }
+    })();
+
+    return CertificateGenerator.fontsLoading;
   }
 
   private async loadImage(src: string): Promise<ImageType> {
@@ -72,10 +112,6 @@ export class CertificateGenerator {
 
   /**
    * Genera el certificado escribiendo sobre una plantilla existente
-   * @param participant - Datos del participante
-   * @param config - Configuración del evento
-   * @param templateSrc - URL o base64 de la imagen de la plantilla
-   * @param visualConfig - Configuración de posiciones y tamaños (opcional)
    */
   async generateFromTemplate(
     participant: Participant,
@@ -91,34 +127,12 @@ export class CertificateGenerator {
       dateX: 85
     };
 
-    // Cargar fuentes solo si no están cargadas aún
-    if (!this.isNode && !this.fontsLoaded) {
-      console.log('Starting font loading...');
-      
-      const fontResults = await Promise.allSettled([
-        this.loadFont("MontserratBold", "/fonts/Montserrat-Bold.ttf"),
-        this.loadFont("MontserratRegular", "/fonts/Montserrat-Regular.ttf")
-      ]);
-
-      // Verificar resultados
-      fontResults.forEach((result, index) => {
-        const fontName = index === 0 ? 'MontserratBold' : 'MontserratRegular';
-        if (result.status === 'rejected') {
-          console.error(`Failed to load ${fontName}:`, result.reason);
-        } else if (!result.value) {
-          console.warn(`${fontName} loaded with issues`);
-        }
-      });
-
-      // Esperar un poco más para asegurar que las fuentes están listas
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      this.fontsLoaded = true;
-      console.log('Fonts loading completed');
+    // Asegurar que las fuentes estén cargadas
+    if (!this.isNode) {
+      await CertificateGenerator.ensureFontsLoaded();
     }
 
     const vc = visualConfig || defaultConfig;
-
     const templateImg = await this.loadImage(templateSrc);
 
     this.canvas.width = templateImg.width || 1920;
@@ -135,38 +149,33 @@ export class CertificateGenerator {
     const dateY = (this.canvas.height * vc.dateY) / 100;
     const dateX = (this.canvas.width * vc.dateX) / 100;
 
-    const qrSize = 120;
-    const qrX = 10;
-    const qrY = this.canvas.height - qrSize - 10;
-
-    // Configurar texto del nombre con fallback
+    // ========== DIBUJAR NOMBRE ==========
     this.ctx.fillStyle = '#000000';
-    this.ctx.font = `bold ${vc.nameFontSize}px MontserratBold, "Montserrat", Arial, sans-serif`;
+    this.ctx.font = `bold ${vc.nameFontSize}px MontserratBold, Montserrat, Arial, sans-serif`;
     this.ctx.textAlign = 'center';
     this.ctx.textBaseline = 'middle';
     
-    // Dibujar nombre
     const nameText = participant.nombres_apellidos.toUpperCase();
     this.ctx.fillText(nameText, centerX, nameY);
-    
-    console.log('Drew name:', nameText, 'at position:', centerX, nameY);
 
-    // Dibujar fecha y ubicación
+    // ========== DIBUJAR FECHA Y UBICACIÓN ==========
     if (config.issueLocation && config.issueDate) {
       this.ctx.textAlign = 'right';
-      this.ctx.font = `${vc.dateFontSize}px MontserratRegular, "Montserrat", Arial, sans-serif`;
+      this.ctx.font = `${vc.dateFontSize}px MontserratRegular, Montserrat, Arial, sans-serif`;
       this.ctx.fillStyle = '#000000';
       this.ctx.textBaseline = 'middle';
       
       const dateText = `${config.issueLocation}, ${config.issueDate}`;
       this.ctx.fillText(dateText, dateX, dateY);
-      
-      console.log('Drew date:', dateText, 'at position:', dateX, dateY);
     }
 
-    // Generar y dibujar QR
+    // ========== GENERAR Y DIBUJAR QR ==========
     if (participant.qr_code) {
       try {
+        const qrSize = 120;
+        const qrX = 10;
+        const qrY = this.canvas.height - qrSize - 10;
+
         const qrDataUrl = await QRCode.toDataURL(participant.qr_code, {
           width: qrSize,
           margin: 1,
@@ -184,14 +193,11 @@ export class CertificateGenerator {
 
         // Dibujar QR
         this.ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
-        
-        console.log('Drew QR code at position:', qrX, qrY);
       } catch (error) {
         console.error('Error generating QR:', error);
       }
     }
 
-    // Retornar imagen
     return this.canvas.toDataURL('image/png');
   }
 }
