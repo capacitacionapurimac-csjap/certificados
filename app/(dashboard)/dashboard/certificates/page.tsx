@@ -104,6 +104,8 @@ export default function CertificadosPage() {
         if (!previewCanvasRef.current || !certificateTemplate) return;
 
         try {
+            await CertificateGenerator.ensureFontsLoaded();
+
             const canvas = previewCanvasRef.current;
             const ctx = canvas.getContext('2d')!;
 
@@ -114,25 +116,66 @@ export default function CertificadosPage() {
                 img.src = certificateTemplate;
             });
 
-            canvas.width = img.width;
-            canvas.height = img.height;
+            const baseWidth = 1920;
+            const baseHeight = 1080;
 
+            // Usar las dimensiones exactas de la imagen
+            canvas.width = img.width || baseWidth;
+            canvas.height = img.height || baseHeight;
+
+            console.log('🖼️ Preview - Image size:', img.width, 'x', img.height);
+            console.log('🖼️ Preview - Canvas size:', canvas.width, 'x', canvas.height);
+
+            // Limpiar canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Dibujar template
             ctx.drawImage(img, 0, 0);
 
+            // Calcular escala (igual que en CertificateGenerator)
+            const scaleX = canvas.width / baseWidth;
+            const scaleY = canvas.height / baseHeight;
+            const scale = Math.min(scaleX, scaleY);
+
+            console.log('📏 Preview - Scale factor:', scale.toFixed(3));
+            console.log('⚙️ Preview - Visual config:', JSON.stringify(visualConfig));
+            console.log('⚙️ Preview - Config:', JSON.stringify({
+                issueLocation: config.issueLocation,
+                issueDate: config.issueDate
+            }));
+
+            // Calcular posiciones (igual que en CertificateGenerator)
             const centerX = canvas.width / 2;
+            const nameY = (canvas.height * visualConfig.nameY) / 100;
+            const dateY = (canvas.height * visualConfig.dateY) / 100;
+            const dateX = (canvas.width * visualConfig.dateX) / 100;
 
+            // Escalar tamaños de fuente (igual que en CertificateGenerator)
+            const scaledNameFontSize = Math.round(visualConfig.nameFontSize * scale);
+            const scaledDateFontSize = Math.round(visualConfig.dateFontSize * scale);
+
+            console.log('✍️ Preview - Name position:', centerX.toFixed(0), nameY.toFixed(0));
+            console.log('✍️ Preview - Name font size:', scaledNameFontSize);
+            console.log('📅 Preview - Date position:', dateX.toFixed(0), dateY.toFixed(0));
+            console.log('📅 Preview - Date font size:', scaledDateFontSize);
+
+            // Dibujar nombre
             ctx.fillStyle = '#000000';
-            ctx.font = `bold ${visualConfig.nameFontSize}px Arial`;
+            ctx.font = `bold ${scaledNameFontSize}px MontserratBold, Montserrat, Arial, sans-serif`;
             ctx.textAlign = 'center';
-            const nameYPos = (canvas.height * visualConfig.nameY) / 100;
-            ctx.fillText(previewName.toUpperCase(), centerX, nameYPos);
+            ctx.textBaseline = 'middle';
+            ctx.fillText(previewName.toUpperCase(), centerX, nameY);
 
+            // Dibujar fecha
             if (config.issueLocation && config.issueDate) {
                 ctx.textAlign = 'right';
-                ctx.font = `${visualConfig.dateFontSize}px Arial`;
-                const dateXPos = (canvas.width * visualConfig.dateX) / 100;
-                const dateYPos = (canvas.height * visualConfig.dateY) / 100;
-                ctx.fillText(`${config.issueLocation}, ${config.issueDate}`, dateXPos, dateYPos);
+                ctx.font = `${scaledDateFontSize}px MontserratRegular, Montserrat, Arial, sans-serif`;
+                ctx.textBaseline = 'middle';
+                const dateText = `${config.issueLocation}, ${config.issueDate}`;
+                ctx.fillText(dateText, dateX, dateY);
+                console.log('📅 Preview - Drew date:', dateText);
+            } else {
+                console.log('⚠️ Preview - Date NOT drawn. Location:', config.issueLocation, 'Date:', config.issueDate);
             }
 
             setPreviewImage(canvas.toDataURL('image/png'));
@@ -140,6 +183,7 @@ export default function CertificadosPage() {
             console.error('Error generating preview:', error);
         }
     };
+
 
     const saveVisualConfig = () => {
         localStorage.setItem('certificateVisualConfig', JSON.stringify(visualConfig));
@@ -368,7 +412,7 @@ export default function CertificadosPage() {
                 participant,
                 config,
                 certificateTemplate,
-                visualConfig 
+                visualConfig
             );
             setCurrentPreview({ nombre: participant.nombres_apellidos, imgData });
         } catch (error: any) {
@@ -400,7 +444,7 @@ export default function CertificadosPage() {
                 participant,
                 config,
                 certificateTemplate,
-                visualConfig  
+                visualConfig
             );
             const link = document.createElement('a');
             link.download = `certificado_${participant.nombres_apellidos.replace(/\s+/g, '_')}.png`;
@@ -467,7 +511,7 @@ export default function CertificadosPage() {
                 participant,
                 config,
                 certificateTemplate,
-                visualConfig 
+                visualConfig
             );
             const blob = await (await fetch(imgData)).blob();
 
@@ -483,7 +527,8 @@ export default function CertificadosPage() {
                 eventConfig: config,
                 logos: logos,
                 signatures: signatures,
-                templateImage: certificateTemplate
+                templateImage: certificateTemplate,
+                visualConfig: visualConfig
             }));
 
             const response = await fetch('/api/send-certificate', {
@@ -521,51 +566,51 @@ export default function CertificadosPage() {
     };
 
     const sendBulkEmails = async (selectedIds: string[]) => {
-    if (selectedIds.length === 0) {
-        toast.error('Selecciona al menos un participante');
-        return;
-    }
+        if (selectedIds.length === 0) {
+            toast.error('Selecciona al menos un participante');
+            return;
+        }
 
-    showConfirmDialog(
-        '¿Enviar certificados?',
-        `Se enviarán ${selectedIds.length} certificado(s) por email. Se guardarán en la base de datos al enviar. Esto puede tardar varios minutos.`,
-        async () => {
-            setIsLoading(true);
-            const results = { success: 0, failed: 0, errors: [] as string[] };
+        showConfirmDialog(
+            '¿Enviar certificados?',
+            `Se enviarán ${selectedIds.length} certificado(s) por email. Se guardarán en la base de datos al enviar. Esto puede tardar varios minutos.`,
+            async () => {
+                setIsLoading(true);
+                const results = { success: 0, failed: 0, errors: [] as string[] };
 
-            for (let i = 0; i < selectedIds.length; i++) {
-                const id = selectedIds[i];
-                const participant = participants.find(p => p.id === id);
+                for (let i = 0; i < selectedIds.length; i++) {
+                    const id = selectedIds[i];
+                    const participant = participants.find(p => p.id === id);
 
-                setLoadingMessage(`Enviando ${i + 1} de ${selectedIds.length}: ${participant?.nombres_apellidos || ''}...`);
+                    setLoadingMessage(`Enviando ${i + 1} de ${selectedIds.length}: ${participant?.nombres_apellidos || ''}...`);
 
-                try {
-                    await sendEmail(id);
-                    results.success++;
-                    
-                    await new Promise(resolve => setTimeout(resolve, 1500));
-                } catch (error: any) {
-                    results.failed++;
-                    const p = participants.find(p => p.id === id);
-                    results.errors.push(`${p?.nombres_apellidos}: ${error.message}`);
+                    try {
+                        await sendEmail(id);
+                        results.success++;
+
+                        await new Promise(resolve => setTimeout(resolve, 1500));
+                    } catch (error: any) {
+                        results.failed++;
+                        const p = participants.find(p => p.id === id);
+                        results.errors.push(`${p?.nombres_apellidos}: ${error.message}`);
+                    }
+                }
+
+                setIsLoading(false);
+                setLoadingMessage('');
+
+                if (results.failed > 0) {
+                    toast.error('Envío completado con errores', {
+                        description: `Enviados: ${results.success}, Fallidos: ${results.failed}`
+                    });
+                } else {
+                    toast.success('¡Todos los certificados enviados!', {
+                        description: `${results.success} de ${selectedIds.length} enviados correctamente`
+                    });
                 }
             }
-
-            setIsLoading(false);
-            setLoadingMessage('');
-
-            if (results.failed > 0) {
-                toast.error('Envío completado con errores', {
-                    description: `Enviados: ${results.success}, Fallidos: ${results.failed}`
-                });
-            } else {
-                toast.success('¡Todos los certificados enviados!', {
-                    description: `${results.success} de ${selectedIds.length} enviados correctamente`
-                });
-            }
-        }
-    );
-};
+        );
+    };
 
     return (
         <>

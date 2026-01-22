@@ -168,8 +168,13 @@ export class CertificateGenerator {
     const vc = visualConfig || defaultConfig;
     const templateImg = await this.loadImage(templateSrc);
 
-    this.canvas.width = templateImg.width || 1920;
-    this.canvas.height = templateImg.height || 1080;
+    const baseWidth = 1920;
+    const baseHeight = 1080;
+    
+    this.canvas.width = templateImg.width || baseWidth;
+    this.canvas.height = templateImg.height || baseHeight;
+
+    console.log(`📐 Canvas dimensions: ${this.canvas.width}x${this.canvas.height}`);
 
     // Limpiar canvas
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -177,45 +182,57 @@ export class CertificateGenerator {
     // Dibujar template
     this.ctx.drawImage(templateImg, 0, 0);
 
+    // Calcular escala si el canvas es diferente del tamaño base
+    const scaleX = this.canvas.width / baseWidth;
+    const scaleY = this.canvas.height / baseHeight;
+    const scale = Math.min(scaleX, scaleY);
+
     const centerX = this.canvas.width / 2;
     const nameY = (this.canvas.height * vc.nameY) / 100;
     const dateY = (this.canvas.height * vc.dateY) / 100;
     const dateX = (this.canvas.width * vc.dateX) / 100;
 
+    // Escalar tamaños de fuente proporcionalmente
+    const scaledNameFontSize = Math.round(vc.nameFontSize * scale);
+    const scaledDateFontSize = Math.round(vc.dateFontSize * scale);
+
+    console.log(`🔍 Scale factor: ${scale.toFixed(2)}`);
+    console.log(`📏 Original font sizes: name=${vc.nameFontSize}px, date=${vc.dateFontSize}px`);
+    console.log(`📏 Scaled font sizes: name=${scaledNameFontSize}px, date=${scaledDateFontSize}px`);
+
     // ========== DIBUJAR NOMBRE ==========
     this.ctx.fillStyle = '#000000';
-    // En Node.js usa solo el nombre de la familia registrada
-    // En navegador usa fallbacks
     this.ctx.font = this.isNode 
-      ? `bold ${vc.nameFontSize}px MontserratBold`
-      : `bold ${vc.nameFontSize}px MontserratBold, Montserrat, Arial, sans-serif`;
+      ? `bold ${scaledNameFontSize}px MontserratBold`
+      : `bold ${scaledNameFontSize}px MontserratBold, Montserrat, Arial, sans-serif`;
     this.ctx.textAlign = 'center';
     this.ctx.textBaseline = 'middle';
     
     const nameText = participant.nombres_apellidos.toUpperCase();
     this.ctx.fillText(nameText, centerX, nameY);
 
-    console.log(`✍️ Drew name: "${nameText}" at (${centerX}, ${nameY})`);
+    console.log(`✍️ Drew name: "${nameText}" at (${centerX.toFixed(0)}, ${nameY.toFixed(0)}) with font size ${scaledNameFontSize}px`);
 
     // ========== DIBUJAR FECHA Y UBICACIÓN ==========
     if (config.issueLocation && config.issueDate) {
       this.ctx.textAlign = 'right';
       this.ctx.font = this.isNode
-        ? `${vc.dateFontSize}px MontserratRegular`
-        : `${vc.dateFontSize}px MontserratRegular, Montserrat, Arial, sans-serif`;
+        ? `${scaledDateFontSize}px MontserratRegular`
+        : `${scaledDateFontSize}px MontserratRegular, Montserrat, Arial, sans-serif`;
       this.ctx.fillStyle = '#000000';
       this.ctx.textBaseline = 'middle';
       
       const dateText = `${config.issueLocation}, ${config.issueDate}`;
       this.ctx.fillText(dateText, dateX, dateY);
       
-      console.log(`📅 Drew date: "${dateText}" at (${dateX}, ${dateY})`);
+      console.log(`📅 Drew date: "${dateText}" at (${dateX.toFixed(0)}, ${dateY.toFixed(0)}) with font size ${scaledDateFontSize}px`);
     }
 
     // ========== GENERAR Y DIBUJAR QR ==========
     if (participant.qr_code) {
       try {
-        const qrSize = 120;
+        const baseQRSize = 120;
+        const qrSize = Math.round(baseQRSize * scale);
         const qrX = 10;
         const qrY = this.canvas.height - qrSize - 10;
 
@@ -237,7 +254,7 @@ export class CertificateGenerator {
         // Dibujar QR
         this.ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
         
-        console.log(`📱 Drew QR code at (${qrX}, ${qrY})`);
+        console.log(`📱 Drew QR code at (${qrX}, ${qrY}) with size ${qrSize}x${qrSize}`);
       } catch (error) {
         console.error('❌ Error generating QR:', error);
       }

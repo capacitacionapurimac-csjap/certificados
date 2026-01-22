@@ -113,7 +113,7 @@ export async function POST(request: Request) {
     const { createCanvas } = await import('canvas');
     const canvas = createCanvas(1920, 1080);
     const generator = new CertificateGenerator(canvas);
-    
+
     // Actualizar participantData con el QR real
     const updatedParticipantData = {
       ...participantData,
@@ -136,7 +136,7 @@ export async function POST(request: Request) {
     // 5. Actualizar participante con QR y certificado correctos
     participant = await prisma.participant.update({
       where: { id: participant.id },
-      data: { 
+      data: {
         qr_code: qrCode,
         certificateImage: certificateBase64
       }
@@ -146,13 +146,13 @@ export async function POST(request: Request) {
     // 6. Convertir certificado a PDF
     console.log('📄 Generando PDF del certificado...');
     const { PDFDocument } = await import('pdf-lib');
-    
+
     const base64Data = certificateBase64.replace(/^data:image\/png;base64,/, '');
     const imageBuffer = Buffer.from(base64Data, 'base64');
-    
+
     const pdfDoc = await PDFDocument.create();
     const pngImage = await pdfDoc.embedPng(imageBuffer);
-    
+
     const page = pdfDoc.addPage([pngImage.width, pngImage.height]);
     page.drawImage(pngImage, {
       x: 0,
@@ -160,7 +160,7 @@ export async function POST(request: Request) {
       width: pngImage.width,
       height: pngImage.height,
     });
-    
+
     const pdfBytes = await pdfDoc.save();
     // Convertir Uint8Array a Buffer
     const pdfBuffer = Buffer.from(pdfBytes);
@@ -259,10 +259,10 @@ export async function POST(request: Request) {
             <p><strong>📋 Evento:</strong> ${eventTitle}</p>
             <p><strong>📧 Enviado a:</strong> ${email}</p>
             <p><strong>📅 Fecha de emisión:</strong> ${new Date().toLocaleDateString('es-PE', {
-              day: '2-digit',
-              month: 'long',
-              year: 'numeric'
-            })}</p>
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric'
+    })}</p>
           </div>
           
           <p>
@@ -313,7 +313,7 @@ export async function POST(request: Request) {
     `;
 
     console.log('📧 Enviando email a:', email);
-    
+
     await transporter.sendMail({
       from: `"${process.env.SMTP_FROM_NAME || 'Poder Judicial - Apurímac'}" <${process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER}>`,
       to: email,
@@ -352,12 +352,12 @@ export async function POST(request: Request) {
   } catch (error: unknown) {
     console.error('❌ Error completo:', error);
     let message = "Error al enviar email"
-      if (error instanceof Error) {
+    if (error instanceof Error) {
       message = error.message;
     }
     return NextResponse.json(
-      { 
-        error: 'Error al enviar email', 
+      {
+        error: 'Error al enviar email',
         details: message
       },
       { status: 500 }
