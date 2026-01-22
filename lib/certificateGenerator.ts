@@ -80,13 +80,13 @@ export class CertificateGenerator {
     const qrY = this.canvas.height - qrSize - 10;
 
     this.ctx.fillStyle = '#000000';
-    this.ctx.font = `bold ${vc.nameFontSize}px Arial`;
+    this.ctx.font = `bold ${vc.nameFontSize}px sans-serif`;
     this.ctx.textAlign = 'center';
     this.ctx.fillText(participant.nombres_apellidos.toUpperCase(), centerX, nameY);
 
     if (config.issueLocation && config.issueDate) {
       this.ctx.textAlign = 'right';
-      this.ctx.font = `${vc.dateFontSize}px Arial`;
+      this.ctx.font = `${vc.dateFontSize}px sans-serif`;
       this.ctx.fillStyle = '#000000';
       this.ctx.fillText(`${config.issueLocation}, ${config.issueDate}`, dateX, dateY);
     }
