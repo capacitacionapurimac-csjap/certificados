@@ -19,6 +19,7 @@ export class CertificateGenerator {
   private isNode: boolean;
   private static fontsLoaded: boolean = false;
   private static fontsLoading: Promise<void> | null = null;
+  private static nodeFontsRegistered: boolean = false;
 
   constructor(canvas: CanvasType) {
     this.canvas = canvas;
@@ -27,25 +28,62 @@ export class CertificateGenerator {
   }
 
   /**
-   * Método estático para cargar fuentes UNA VEZ y reutilizar en toda la app
+   * Registra fuentes en Node.js usando canvas.registerFont
    */
-  static async ensureFontsLoaded(): Promise<void> {
-    if (typeof window === 'undefined') return;
-    
-    // Si ya están cargadas, retornar inmediatamente
-    if (CertificateGenerator.fontsLoaded) {
-      console.log('✓ Fonts already loaded');
+  private static async registerNodeFonts(): Promise<void> {
+    if (CertificateGenerator.nodeFontsRegistered) {
+      console.log('✓ Node fonts already registered');
       return;
     }
 
-    // Si están cargando, esperar a que terminen
+    try {
+      const { registerFont } = await import('canvas');
+      const path = await import('path');
+
+      // Rutas absolutas a las fuentes en el servidor
+      const publicDir = path.join(process.cwd(), 'public', 'fonts');
+      
+      console.log('📁 Font directory:', publicDir);
+
+      // Registrar Montserrat Bold
+      const boldPath = path.join(publicDir, 'Montserrat-Bold.ttf');
+      registerFont(boldPath, { family: 'MontserratBold' });
+      console.log('✓ Registered MontserratBold from:', boldPath);
+
+      // Registrar Montserrat Regular
+      const regularPath = path.join(publicDir, 'Montserrat-Regular.ttf');
+      registerFont(regularPath, { family: 'MontserratRegular' });
+      console.log('✓ Registered MontserratRegular from:', regularPath);
+
+      CertificateGenerator.nodeFontsRegistered = true;
+      console.log('✅ All Node.js fonts registered successfully');
+    } catch (error) {
+      console.error('❌ Error registering Node.js fonts:', error);
+      throw new Error(`Failed to register fonts: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Método estático para cargar fuentes en el navegador
+   */
+  static async ensureFontsLoaded(): Promise<void> {
+    if (typeof window === 'undefined') {
+      // En Node.js, usar registerFont
+      return CertificateGenerator.registerNodeFonts();
+    }
+    
+    // En el navegador, cargar con FontFace API
+    if (CertificateGenerator.fontsLoaded) {
+      console.log('✓ Browser fonts already loaded');
+      return;
+    }
+
     if (CertificateGenerator.fontsLoading) {
-      console.log('⏳ Waiting for fonts to finish loading...');
+      console.log('⏳ Waiting for browser fonts to finish loading...');
       return CertificateGenerator.fontsLoading;
     }
 
-    // Iniciar carga
-    console.log('🔄 Starting font loading...');
+    console.log('🔄 Starting browser font loading...');
     CertificateGenerator.fontsLoading = (async () => {
       try {
         const fonts = [
@@ -55,7 +93,6 @@ export class CertificateGenerator {
 
         const loadPromises = fonts.map(async ({ name, url }) => {
           try {
-            // Verificar si ya existe
             const existingFonts = Array.from(document.fonts);
             if (existingFonts.some((f: any) => f.family === name)) {
               console.log(`✓ ${name} already in document.fonts`);
@@ -76,14 +113,12 @@ export class CertificateGenerator {
 
         await Promise.all(loadPromises);
         await document.fonts.ready;
-        
-        // Esperar un tick adicional para asegurar disponibilidad
         await new Promise(resolve => setTimeout(resolve, 100));
         
         CertificateGenerator.fontsLoaded = true;
-        console.log('✅ All fonts loaded and ready');
+        console.log('✅ All browser fonts loaded and ready');
       } catch (error) {
-        console.error('❌ Error in font loading process:', error);
+        console.error('❌ Error in browser font loading:', error);
       } finally {
         CertificateGenerator.fontsLoading = null;
       }
@@ -127,10 +162,8 @@ export class CertificateGenerator {
       dateX: 85
     };
 
-    // Asegurar que las fuentes estén cargadas
-    if (!this.isNode) {
-      await CertificateGenerator.ensureFontsLoaded();
-    }
+    // Asegurar que las fuentes estén cargadas/registradas
+    await CertificateGenerator.ensureFontsLoaded();
 
     const vc = visualConfig || defaultConfig;
     const templateImg = await this.loadImage(templateSrc);
@@ -151,22 +184,32 @@ export class CertificateGenerator {
 
     // ========== DIBUJAR NOMBRE ==========
     this.ctx.fillStyle = '#000000';
-    this.ctx.font = `bold ${vc.nameFontSize}px MontserratBold, Montserrat, Arial, sans-serif`;
+    // En Node.js usa solo el nombre de la familia registrada
+    // En navegador usa fallbacks
+    this.ctx.font = this.isNode 
+      ? `bold ${vc.nameFontSize}px MontserratBold`
+      : `bold ${vc.nameFontSize}px MontserratBold, Montserrat, Arial, sans-serif`;
     this.ctx.textAlign = 'center';
     this.ctx.textBaseline = 'middle';
     
     const nameText = participant.nombres_apellidos.toUpperCase();
     this.ctx.fillText(nameText, centerX, nameY);
 
+    console.log(`✍️ Drew name: "${nameText}" at (${centerX}, ${nameY})`);
+
     // ========== DIBUJAR FECHA Y UBICACIÓN ==========
     if (config.issueLocation && config.issueDate) {
       this.ctx.textAlign = 'right';
-      this.ctx.font = `${vc.dateFontSize}px MontserratRegular, Montserrat, Arial, sans-serif`;
+      this.ctx.font = this.isNode
+        ? `${vc.dateFontSize}px MontserratRegular`
+        : `${vc.dateFontSize}px MontserratRegular, Montserrat, Arial, sans-serif`;
       this.ctx.fillStyle = '#000000';
       this.ctx.textBaseline = 'middle';
       
       const dateText = `${config.issueLocation}, ${config.issueDate}`;
       this.ctx.fillText(dateText, dateX, dateY);
+      
+      console.log(`📅 Drew date: "${dateText}" at (${dateX}, ${dateY})`);
     }
 
     // ========== GENERAR Y DIBUJAR QR ==========
@@ -193,11 +236,15 @@ export class CertificateGenerator {
 
         // Dibujar QR
         this.ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
+        
+        console.log(`📱 Drew QR code at (${qrX}, ${qrY})`);
       } catch (error) {
-        console.error('Error generating QR:', error);
+        console.error('❌ Error generating QR:', error);
       }
     }
 
-    return this.canvas.toDataURL('image/png');
+    const result = this.canvas.toDataURL('image/png');
+    console.log('✅ Certificate generated successfully');
+    return result;
   }
 }
